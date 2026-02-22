@@ -150,32 +150,29 @@ kubectl create ns webapps
 
 ---
 
-## ☁️ Infrastructure Setup
+# ☁️ Infrastructure Setup (Step-by-Step)
 
-### EC2 Instances
+## Step 1 — Launch EC2 Instances
 
-You need **7 servers** on AWS:
+Create **7 EC2 instances** on AWS:
 
-| Server | Type | Storage | Role |
-|--------|------|---------|------|
-| Master Node | t2.medium | 25 GB | K8s Master |
-| Slave-1 | t2.medium | 25 GB | K8s Worker |
-| Slave-2 | t2.medium | 25 GB | K8s Worker |
-| SonarQube | t2.medium | 25 GB | Code Analysis |
-| Nexus | t2.medium | 25 GB | Artifact Repo |
-| Monitoring | t2.medium | 25 GB | Prometheus + Grafana |
-| Jenkins | **t2.large** | **30 GB** | CI/CD Server |
+| # | Server | Instance Type | Storage | Role |
+|---|--------|------|---------|------|
+| 1 | Master Node | t2.medium | 25 GB | K8s Master |
+| 2 | Slave-1 | t2.medium | 25 GB | K8s Worker |
+| 3 | Slave-2 | t2.medium | 25 GB | K8s Worker |
+| 4 | SonarQube | t2.medium | 25 GB | Code Analysis |
+| 5 | Nexus | t2.medium | 25 GB | Artifact Repo |
+| 6 | Monitoring | t2.medium | 25 GB | Prometheus + Grafana |
+| 7 | Jenkins | **t2.large** | **30 GB** | CI/CD Server |
 
-> **Ports to open:** 8080, 9000, 8081, 9090, 3000, 9100, 9115
+> **Ports to open in Security Group:** `8080`, `9000`, `8081`, `9090`, `3000`, `9100`, `9115`
 
 ![EC2 Instances](https://miro.medium.com/v2/resize:fit:700/0*HiK2H1lqLBR0Fs8r.png)
 
 ---
 
-### EKS Cluster (Terraform)
-
-<details>
-<summary><b>1️⃣ Install AWS CLI</b></summary>
+## Step 2 — Install AWS CLI (on Master Node)
 
 ```bash
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
@@ -184,81 +181,99 @@ sudo ./aws/install
 aws --version
 ```
 
-</details>
+**Expected output:** `aws-cli/2.x.x Python/3.x.x Linux/...`
 
-<details>
-<summary><b>2️⃣ Configure AWS CLI</b></summary>
+---
+
+## Step 3 — Configure AWS CLI
 
 ```bash
 aws configure
-# Enter: Access Key, Secret Key, Region (ap-southeast-1), Output (json)
 ```
 
-</details>
+Enter the following when prompted:
+- **AWS Access Key ID**
+- **AWS Secret Access Key**
+- **Region:** `ap-southeast-1`
+- **Output format:** `json`
 
-<details>
-<summary><b>3️⃣ Install Terraform</b></summary>
+---
+
+## Step 4 — Install Terraform
 
 ```bash
 sudo apt install -y gnupg software-properties-common curl
+
 curl -fsSL https://apt.releases.hashicorp.com/gpg | \
   sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
 echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
   https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
   sudo tee /etc/apt/sources.list.d/hashicorp.list
-sudo apt update && sudo apt install terraform -y
+
+sudo apt update
+sudo apt install terraform -y
+terraform -version
 ```
 
-</details>
+---
 
-<details>
-<summary><b>4️⃣ Create EKS Cluster</b></summary>
+## Step 5 — Create EKS Cluster with Terraform
 
-Terraform files are in [`EKS_Terraform/`](./FullStack-Blogging-App/EKS_Terraform/):
+Terraform config files are in [`EKS_Terraform/`](./FullStack-Blogging-App/EKS_Terraform/):
 
 | File | What it creates |
 |------|----------------|
-| `main.tf` | VPC, Subnets, EKS Cluster, Node Group, IAM Roles |
-| `variables.tf` | SSH key variable |
-| `output.tf` | Cluster & network outputs |
+| `main.tf` | VPC, Subnets, Security Groups, EKS Cluster, Node Group, IAM Roles |
+| `variables.tf` | SSH key pair name |
+| `output.tf` | Cluster ID, Node Group ID, VPC ID, Subnet IDs |
 
 ```bash
 cd FullStack-Blogging-App/EKS_Terraform
+
 terraform init
 terraform validate
 terraform plan
 terraform apply --auto-approve
 ```
 
-![Terraform](https://miro.medium.com/v2/resize:fit:700/0*UBPDcX4x-2g4TTZt.png)
+![Terraform Initialized](https://miro.medium.com/v2/resize:fit:700/0*UBPDcX4x-2g4TTZt.png)
 
-</details>
+![EKS Cluster Created](https://miro.medium.com/v2/resize:fit:700/0*YMydCBNOVdi_p_Rh.png)
 
-<details>
-<summary><b>5️⃣ Connect to EKS</b></summary>
+---
+
+## Step 6 — Connect to EKS Cluster
 
 ```bash
 aws eks --region ap-southeast-1 update-kubeconfig --name abrahimcse-cluster
+```
+
+Install kubectl:
+
+```bash
 sudo snap install kubectl --classic
 kubectl get nodes
 ```
 
-![EKS Nodes](https://miro.medium.com/v2/resize:fit:700/0*iGVhn-oueNHapNHa.png)
+![EKS Cluster Nodes](https://miro.medium.com/v2/resize:fit:700/0*iGVhn-oueNHapNHa.png)
 
-</details>
+![Node Group](https://miro.medium.com/v2/resize:fit:700/0*L-rZRSl9uz_Q2jg0.png)
 
 ---
 
-### RBAC Setup (for Jenkins → K8s access)
+## Step 7 — RBAC Setup (Jenkins → K8s Access)
 
-<details>
-<summary><b>📄 Create Service Account, Role, RoleBinding & Secret</b></summary>
+Create a namespace for the application:
 
 ```bash
 kubectl create ns webapps
 ```
 
-**svc.yaml** — Service Account:
+### 7.1 — Create Service Account
+
+Create `svc.yaml`:
+
 ```yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -267,7 +282,14 @@ metadata:
   namespace: webapps
 ```
 
-**role.yaml** — Role with full access to webapps namespace:
+```bash
+kubectl apply -f svc.yaml
+```
+
+### 7.2 — Create Role
+
+Create `role.yaml`:
+
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -275,12 +297,46 @@ metadata:
   name: app-role
   namespace: webapps
 rules:
-  - apiGroups: ["", "apps", "autoscaling", "batch", "extensions", "policy", "rbac.authorization.k8s.io"]
-    resources: ["pods", "secrets", "configmaps", "deployments", "services", "replicasets", "namespaces", "events", "jobs", "serviceaccounts", "persistentvolumes", "persistentvolumeclaims"]
+  - apiGroups:
+      - ""
+      - apps
+      - autoscaling
+      - batch
+      - extensions
+      - policy
+      - rbac.authorization.k8s.io
+    resources:
+      - pods
+      - secrets
+      - configmaps
+      - daemonsets
+      - deployments
+      - events
+      - endpoints
+      - horizontalpodautoscalers
+      - ingress
+      - jobs
+      - limitranges
+      - namespaces
+      - nodes
+      - persistentvolumes
+      - persistentvolumeclaims
+      - resourcequotas
+      - replicasets
+      - replicationcontrollers
+      - serviceaccounts
+      - services
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ```
 
-**bind.yaml** — Bind role to service account:
+```bash
+kubectl apply -f role.yaml
+```
+
+### 7.3 — Bind Role to Service Account
+
+Create `bind.yaml`:
+
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -297,7 +353,14 @@ subjects:
     namespace: webapps
 ```
 
-**sec.yaml** — Token secret:
+```bash
+kubectl apply -f bind.yaml
+```
+
+### 7.4 — Create Token Secret
+
+Create `sec.yaml`:
+
 ```yaml
 apiVersion: v1
 kind: Secret
@@ -308,23 +371,19 @@ metadata:
     kubernetes.io/service-account.name: jenkins
 ```
 
-**Apply everything:**
 ```bash
-kubectl apply -f svc.yaml
-kubectl apply -f role.yaml
-kubectl apply -f bind.yaml
 kubectl apply -f sec.yaml -n webapps
 ```
 
-**Get the token (add to Jenkins credentials):**
+### 7.5 — Get the Token
+
+Copy this token and save it in Jenkins credentials later:
+
 ```bash
 kubectl describe secret mysecretname -n webapps
 ```
 
-</details>
-
-<details>
-<summary><b>🐳 Docker Registry Secret</b></summary>
+### 7.6 — Create Docker Registry Secret
 
 ```bash
 kubectl create secret docker-registry regcred \
@@ -335,41 +394,86 @@ kubectl create secret docker-registry regcred \
   --namespace=webapps
 ```
 
-</details>
+Verify:
+
+```bash
+kubectl get secret regcred --namespace=webapps --output=yaml
+```
 
 ---
 
-## 🔧 DevOps Tools Setup
+# 🔧 DevOps Tools Setup (Step-by-Step)
 
-### SonarQube
+## Step 8 — SonarQube Server
+
+### 8.1 — Install Docker
+
+```bash
+sudo apt update
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+```
+
+### 8.2 — Run SonarQube
 
 ```bash
 docker run -d --name Sonar -p 9000:9000 sonarqube:lts-community
 ```
 
-- **URL:** `http://<IP>:9000` — Login: `admin` / `admin`
-- Generate token: `Administration > Security > Users > Tokens`
-- Add webhook: `Administration > Webhooks` → `http://<jenkins_ip>:8080/sonarqube-webhook/`
+### 8.3 — Access SonarQube
 
-| Quality Gate | Issues |
+- **URL:** `http://<SONARQUBE_IP>:9000`
+- **Username:** `admin`
+- **Password:** `admin` *(change on first login)*
+
+### 8.4 — Generate Token
+
+1. Go to `Administration > Security > Users > Tokens`
+2. Create a token named `sonar-token`
+3. **Copy the token** — you'll need it in Jenkins
+
+### 8.5 — Configure Webhook for Jenkins
+
+1. Go to `Administration > Configuration > Webhooks`
+2. Click **Create Webhook**
+   - **Name:** `jenkins`
+   - **URL:** `http://<JENKINS_IP>:8080/sonarqube-webhook/`
+
+| Quality Gate Overview | Issues |
 |:---:|:---:|
 | ![](https://miro.medium.com/v2/resize:fit:700/0*o4bizIr1lWAfvBYP.png) | ![](https://miro.medium.com/v2/resize:fit:700/0*FcKyyZkLm6SI_cCw.png) |
 
 ---
 
-### Nexus Repository
+## Step 9 — Nexus Repository Server
+
+### 9.1 — Install Docker & Run Nexus
 
 ```bash
+sudo apt update
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
 docker run -d --name Nexus -p 8081:8081 sonatype/nexus3
 ```
 
-- **URL:** `http://<IP>:8081` — Login: `admin` / *(get password below)*
+### 9.2 — Get Admin Password
 
 ```bash
 docker exec -it <container_id> cat sonatype-work/nexus3/admin.password
 ```
 
-Update `pom.xml` with your Nexus IP:
+### 9.3 — Access Nexus
+
+- **URL:** `http://<NEXUS_IP>:8081`
+- **Username:** `admin`
+- **Password:** *(from the command above)*
+
+> ✅ Enable **anonymous access** if needed for open read access.
+
+### 9.4 — Update pom.xml
+
+Add your Nexus endpoints to the project's `pom.xml`:
 
 ```xml
 <distributionManagement>
@@ -384,83 +488,169 @@ Update `pom.xml` with your Nexus IP:
 </distributionManagement>
 ```
 
+![Nexus Browse](https://miro.medium.com/v2/resize:fit:700/0*PT4j1js8LENhXXiV.png)
+
 ---
 
-### Jenkins
+## Step 10 — Jenkins Server
 
-<details>
-<summary><b>📦 Install Jenkins + Trivy + kubectl</b></summary>
+### 10.1 — Install Docker
 
-**Jenkins:**
 ```bash
-sudo apt install openjdk-17-jre-headless -y
-sudo wget -O /usr/share/keyrings/jenkins-keyring.asc \
-  https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
-echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
-  https://pkg.jenkins.io/debian-stable binary/ | \
-  sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
-sudo apt-get update && sudo apt-get install jenkins -y
+sudo apt update
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 ```
 
-**Trivy:**
+### 10.2 — Install Trivy
+
 ```bash
+sudo apt-get install wget gnupg
 wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | \
   gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
 echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] \
   https://aquasecurity.github.io/trivy-repo/deb generic main" | \
   sudo tee -a /etc/apt/sources.list.d/trivy.list
-sudo apt-get update && sudo apt-get install trivy -y
+sudo apt-get update
+sudo apt-get install trivy -y
+trivy --version
 ```
 
-**kubectl:**
+### 10.3 — Install Jenkins
+
+```bash
+sudo apt install openjdk-17-jre-headless -y
+
+sudo wget -O /usr/share/keyrings/jenkins-keyring.asc \
+  https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+
+echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+  https://pkg.jenkins.io/debian-stable binary/ | \
+  sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+
+sudo apt-get update
+sudo apt-get install jenkins -y
+```
+
+### 10.4 — Access Jenkins
+
+- **URL:** `http://<JENKINS_IP>:8080`
+- Get initial password:
+
+```bash
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+```
+
+![Unlock Jenkins](https://miro.medium.com/v2/resize:fit:700/0*yAkOzvp3d8of8guw.png)
+
+### 10.5 — Install kubectl on Jenkins Server
+
 ```bash
 curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.19.6/2021-01-05/bin/linux/amd64/kubectl
-chmod +x ./kubectl && sudo mv ./kubectl /usr/local/bin
+chmod +x ./kubectl
+sudo mv ./kubectl /usr/local/bin
+kubectl version --short --client
 ```
 
-**Add Jenkins to Docker group:**
+### 10.6 — Add Jenkins to Docker Group
+
 ```bash
 sudo usermod -aG docker jenkins
 sudo systemctl restart jenkins
 ```
 
-</details>
+---
 
-**Access Jenkins:** `http://<IP>:8080` — Get password: `sudo cat /var/lib/jenkins/secrets/initialAdminPassword`
+# ⚙️ Jenkins Configuration (Step-by-Step)
 
-#### Plugins to Install
+## Step 11 — Install Plugins
 
-> `Manage Jenkins > Plugins > Available`
+Go to `Manage Jenkins > Plugins > Available Plugins` and install:
 
-Docker · Docker Pipeline · Kubernetes · Kubernetes CLI · Kubernetes Credentials · Prometheus Metrics · Pipeline Stage View · Pipeline Maven · Maven Integration · SonarQube Scanner · Config File Provider · Eclipse Temurin Installer
+- ✅ Docker
+- ✅ Docker Pipeline
+- ✅ Kubernetes
+- ✅ Kubernetes CLI
+- ✅ Kubernetes Client API
+- ✅ Kubernetes Credentials
+- ✅ Prometheus Metrics
+- ✅ Pipeline: Stage View
+- ✅ Pipeline Maven Integration
+- ✅ Maven Integration
+- ✅ SonarQube Scanner
+- ✅ Config File Provider
+- ✅ Eclipse Temurin Installer
 
-#### Tools Configuration
+> ⚠️ **Restart Jenkins after installing all plugins.**
 
-> `Manage Jenkins > Tools`
+![Plugins](https://miro.medium.com/v2/resize:fit:700/0*N6yRKClIjMfgFEd8.png)
 
-| Tool | Name | Version |
-|------|------|---------|
-| JDK | `jdk17` | Adoptium `jdk-17.0.9+9` |
-| Maven | `maven3` | `3.6.1` |
-| SonarQube Scanner | `sonar-scanner` | Latest |
-| Docker | `docker` | Auto-install |
+---
 
-#### Credentials
+## Step 12 — Global Tool Configuration
 
-> `Manage Jenkins > Credentials > Global`
+Go to `Manage Jenkins > Tools`:
 
-| ID | Type | For |
-|----|------|-----|
-| `git-cred` | Username/Password | GitHub |
-| `sonar-token` | Secret Text | SonarQube |
-| `docker-cred` | Username/Password | Docker Hub |
-| `k8-cred` | Secret Text | K8s Token |
-| `mail-cred` | Username/Password | Gmail |
+**JDK:**
+- Name: `jdk17`
+- Install automatically → Source: `Adoptium.net` → Version: `jdk-17.0.9+9`
 
-<details>
-<summary><b>📄 Maven Settings (for Nexus)</b></summary>
+**SonarQube Scanner:**
+- Name: `sonar-scanner`
+- Version: `Latest`
 
-> `Manage Jenkins > Managed Files > Add New Config` → Global Maven settings.xml (ID: `global-settings`)
+**Maven:**
+- Name: `maven3`
+- Version: `3.6.1`
+
+**Docker:**
+- Name: `docker`
+- Install Automatically ✅
+
+---
+
+## Step 13 — Add Credentials
+
+Go to `Manage Jenkins > Credentials > System > Global > Add Credentials`:
+
+**GitHub:**
+- Username: `<github-username>`
+- Password: `<github-token>`
+- ID: `git-cred`
+
+**SonarQube:**
+- Kind: `Secret text`
+- Secret: `<sonar-token>`
+- ID: `sonar-token`
+
+**Docker Hub:**
+- Username: `<dockerhub-username>`
+- Password: `<dockerhub-password>`
+- ID: `docker-cred`
+
+**Kubernetes:**
+- Kind: `Secret text`
+- Secret: `<k8s-token>` *(from Step 7.5)*
+- ID: `k8-cred`
+
+**Gmail:**
+- Kind: `Username with password`
+- Username: `<your-email@gmail.com>`
+- Password: `<Gmail App Password>`
+- ID: `mail-cred`
+
+![Credentials](https://miro.medium.com/v2/resize:fit:700/0*ripNKI_viCGmN1KO.png)
+
+---
+
+## Step 14 — Maven Settings for Nexus
+
+Go to `Manage Jenkins > Managed Files > Add a New Config`:
+
+- **Type:** Global Maven `settings.xml`
+- **ID:** `global-settings`
+
+Paste:
 
 ```xml
 <settings>
@@ -479,55 +669,87 @@ Docker · Docker Pipeline · Kubernetes · Kubernetes CLI · Kubernetes Credenti
 </settings>
 ```
 
-</details>
+---
 
-<details>
-<summary><b>📄 SonarQube Server Config</b></summary>
+## Step 15 — SonarQube Server in Jenkins
 
-> `Manage Jenkins > System > SonarQube Servers`
+Go to `Manage Jenkins > System > SonarQube Servers`:
 
-| Field | Value |
-|-------|-------|
-| Name | `sonar` |
-| URL | `http://<SONAR_IP>:9000` |
-| Token | `sonar-token` |
-
-</details>
+- **Name:** `sonar`
+- **Server URL:** `http://<SONARQUBE_IP>:9000`
+- **Token:** `sonar-token` *(from credentials)*
 
 ---
 
-### 📧 Email Notifications
+## Step 16 — Create Pipeline Job
 
-1. Generate a [Gmail App Password](https://myaccount.google.com/apppasswords)
-2. In Jenkins (`Manage Jenkins > System`):
+1. Go to Jenkins Dashboard → **New Item**
+2. Name: `BloggingApp` → Type: **Pipeline** → Click **OK**
+3. Discard Old Builds → Max # of builds: `2`
+4. Pipeline Definition → Choose: **Pipeline script**
+5. Paste the pipeline from [`Jenkinsfile`](./FullStack-Blogging-App/Jenkinsfile)
 
-| Setting | Value |
-|---------|-------|
-| SMTP Server | `smtp.gmail.com` |
-| SMTP Port | `465` |
-| Use SSL | ✅ |
-| Credentials | `mail-cred` |
+![Pipeline Stages](https://miro.medium.com/v2/resize:fit:700/0*BLOQKvQWc_cacpYd.png)
+
+---
+
+## Step 17 — Email Notification Setup (Gmail SMTP)
+
+### 17.1 — Generate Gmail App Password
+
+1. Go to [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+2. Enable **2-Step Verification** if not already
+3. Create App Password for `Mail`
+4. **Copy the password**
+
+### 17.2 — Configure in Jenkins
+
+Go to `Manage Jenkins > System`:
+
+**Extended E-mail Notification:**
+- SMTP Server: `smtp.gmail.com`
+- SMTP Port: `465`
+- ✅ Use SSL
+- Credentials: `mail-cred`
+
+**E-mail Notification:**
+- SMTP Server: `smtp.gmail.com`
+- SMTP Port: `465`
+- ✅ Use SSL
+- ✅ Use SMTP Authentication
+- Username: `<your-email@gmail.com>`
+- Password: `<Gmail App Password>`
+
+### 17.3 — Test Configuration
+
+Enter your email and click **Test Configuration** — you should receive a test email.
 
 ![Email Test](https://miro.medium.com/v2/resize:fit:700/0*UPTdaw9n3kgTRfsT.png)
 
 ---
 
-## 📊 Monitoring Stack
+# 📊 Monitoring Setup (Step-by-Step)
 
-### Prometheus
+> All monitoring tools are installed on the **Monitoring server** unless noted otherwise.
+
+## Step 18 — Install Prometheus
 
 ```bash
+sudo apt update -y
+
 wget https://github.com/prometheus/prometheus/releases/download/v3.5.0-rc.0/prometheus-3.5.0-rc.0.linux-amd64.tar.gz
-tar -xvf prometheus-*.tar.gz && rm prometheus-*.tar.gz
-mv prometheus-* prometheus && cd prometheus
+tar -xvf prometheus-3.5.0-rc.0.linux-amd64.tar.gz
+rm -rf prometheus-3.5.0-rc.0.linux-amd64.tar.gz
+mv prometheus-3.5.0-rc.0.linux-amd64 prometheus
+cd prometheus
 ./prometheus &
 ```
 
-**Access:** `http://<IP>:9090`
+**Access:** `http://<MONITORING_IP>:9090`
 
 ---
 
-### Grafana
+## Step 19 — Install Grafana
 
 ```bash
 sudo apt-get install -y adduser libfontconfig1 musl
@@ -536,25 +758,29 @@ sudo dpkg -i grafana-enterprise_12.0.2_amd64.deb
 sudo systemctl start grafana-server
 ```
 
-**Access:** `http://<IP>:3000` — Login: `admin` / `admin`
+- **URL:** `http://<MONITORING_IP>:3000`
+- **Username:** `admin`
+- **Password:** `admin`
 
-**Connect to Prometheus:** `Connections > Data Sources > Prometheus` → URL: `http://<PROMETHEUS_IP>:9090`
+![Grafana](https://miro.medium.com/v2/resize:fit:700/0*f7Fzx-vV823U0p_a.png)
 
 ---
 
-### Exporters
-
-<details>
-<summary><b>Blackbox Exporter</b> (on Monitoring server)</summary>
+## Step 20 — Install Blackbox Exporter
 
 ```bash
 wget https://github.com/prometheus/blackbox_exporter/releases/download/v0.27.0/blackbox_exporter-0.27.0.linux-amd64.tar.gz
-tar -xvf blackbox_exporter-*.tar.gz && rm blackbox_exporter-*.tar.gz
-mv blackbox_exporter-* blackbox_exporter && cd blackbox_exporter
+tar -xvf blackbox_exporter-0.27.0.linux-amd64.tar.gz
+rm -rf blackbox_exporter-0.27.0.linux-amd64.tar.gz
+mv blackbox_exporter-0.27.0.linux-amd64 blackbox_exporter
+cd blackbox_exporter
 ./blackbox_exporter &
 ```
 
-Add to `prometheus.yml`:
+**Access:** `http://<MONITORING_IP>:9115`
+
+Add this job to `prometheus.yml`:
+
 ```yaml
 - job_name: 'blackbox'
   metrics_path: /probe
@@ -563,6 +789,7 @@ Add to `prometheus.yml`:
   static_configs:
     - targets:
       - http://prometheus.io
+      - http://example.com:8080
   relabel_configs:
     - source_labels: [__address__]
       target_label: __param_target
@@ -572,19 +799,25 @@ Add to `prometheus.yml`:
       replacement: 127.0.0.1:9115
 ```
 
-</details>
+---
 
-<details>
-<summary><b>Node Exporter</b> (on Jenkins server)</summary>
+## Step 21 — Install Node Exporter (on Jenkins Server)
+
+> ⚠️ This is installed on the **Jenkins server**, not the Monitoring server.
 
 ```bash
 wget https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-amd64.tar.gz
-tar -xvf node_exporter-*.tar.gz && rm node_exporter-*.tar.gz
-mv node_exporter-* node_exporter && cd node_exporter
+tar -xvf node_exporter-1.9.1.linux-amd64.tar.gz
+rm -rf node_exporter-1.9.1.linux-amd64.tar.gz
+mv node_exporter-1.9.1.linux-amd64 node_exporter
+cd node_exporter
 ./node_exporter &
 ```
 
-Add to `prometheus.yml`:
+**Access:** `http://<JENKINS_IP>:9100`
+
+Add these jobs to `prometheus.yml` (on Monitoring server):
+
 ```yaml
 - job_name: 'node_exporter'
   static_configs:
@@ -596,16 +829,36 @@ Add to `prometheus.yml`:
     - targets: ['<JENKINS_IP>:8080']
 ```
 
-</details>
+**Restart Prometheus after config changes:**
 
-### Import Grafana Dashboards
+```bash
+pgrep prometheus
+kill <PID>
+./prometheus &
+```
 
-> `Dashboard > Import` → Enter Dashboard ID → Select Prometheus → Import
+---
+
+## Step 22 — Connect Grafana to Prometheus
+
+1. Go to `Grafana > Connections > Data Sources > Add data source`
+2. Select **Prometheus**
+3. URL: `http://<MONITORING_IP>:9090`
+4. Click **Save & Test** → should show *"Data source is working"*
+
+---
+
+## Step 23 — Import Grafana Dashboards
+
+1. Go to `Dashboard > Import`
+2. Enter the Dashboard ID
+3. Select **Prometheus** as data source
+4. Click **Import**
 
 | Dashboard | ID |
 |-----------|----|
-| Blackbox Exporter | `7587` |
-| Node Exporter | `1860` |
+| 🔍 Blackbox Exporter | `7587` |
+| 🖥️ Node Exporter | `1860` |
 
 | Blackbox Dashboard | Node Exporter Dashboard |
 |:---:|:---:|
